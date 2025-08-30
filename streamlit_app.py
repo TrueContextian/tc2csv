@@ -1121,43 +1121,75 @@ def main():
                 st.info("""
                 📊 **Dual Template Mode**: Your form contains repeating sections/tables.
                 Two CSV templates will be generated:
-                1. **Main Form CSV** - One row per submission
-                2. **Repeating Data CSV** - Multiple rows per submission (one per table row)
+                1. **Main Form CSV** - One row per submission (using main form fields from Tab 2)
+                2. **Repeating Data CSV** - Multiple rows per submission (using repeating fields from Tab 2)
                 
                 Both CSVs will include a SubmissionID field for joining the data.
                 """)
                 
-                # Separate field selection for main and repeating
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    st.subheader("Main Form Fields")
+                # Use fields already selected in Tab 2
+                if st.session_state.selected_fields:
+                    # Separate selected fields into main and repeating based on the fields' properties
                     selected_main_ids = set()
-                    for field in main_fields:
-                        if st.checkbox(f"{field['name']}", key=f"main_{field['id']}_template"):
-                            selected_main_ids.add(field['id'])
-                
-                with col2:
-                    st.subheader("Repeating Section Fields")
                     selected_repeat_ids = set()
-                    for field in repeating_fields:
-                        section_label = f" ({field.get('repeating_section', 'Table')})"
-                        if st.checkbox(f"{field['name']}{section_label}", key=f"repeat_{field['id']}_template"):
-                            selected_repeat_ids.add(field['id'])
-                
-                # Generate templates button
-                if st.button("🔄 Generate Dual Templates", type="primary"):
-                    # Get filters from session state
-                    main_filters = st.session_state.get('main_filters', [])
-                    repeat_filters = st.session_state.get('repeat_filters', [])
                     
-                    main_template, repeat_template = generate_dual_templates(
-                        main_fields, repeating_fields,
-                        selected_main_ids, selected_repeat_ids,
-                        repeating_sections, main_filters, repeat_filters
-                    )
-                    st.session_state.main_template = main_template
-                    st.session_state.repeat_template = repeat_template
+                    # Get unique_id mapping for selected fields
+                    all_fields = main_fields + repeating_fields
+                    seen_ids = {}
+                    for field in all_fields:
+                        base_id = field['id']
+                        if base_id not in seen_ids:
+                            seen_ids[base_id] = 0
+                            field['unique_id'] = base_id
+                        else:
+                            seen_ids[base_id] += 1
+                            field['unique_id'] = f"{base_id}_{seen_ids[base_id]}"
+                    
+                    # Categorize selected fields
+                    for field in all_fields:
+                        field_unique_id = field.get('unique_id', field['id'])
+                        if field_unique_id in st.session_state.selected_fields:
+                            if field.get('repeating_section'):
+                                selected_repeat_ids.add(field['id'])
+                            else:
+                                selected_main_ids.add(field['id'])
+                    
+                    # Show field summary
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.subheader("Main Form Fields Selected")
+                        main_selected = [f for f in main_fields if f['id'] in selected_main_ids]
+                        if main_selected:
+                            for field in main_selected:
+                                st.write(f"✅ {field['name']}")
+                        else:
+                            st.write("No main form fields selected")
+                    
+                    with col2:
+                        st.subheader("Repeating Section Fields Selected")
+                        repeat_selected = [f for f in repeating_fields if f['id'] in selected_repeat_ids]
+                        if repeat_selected:
+                            for field in repeat_selected:
+                                section_label = f" ({field.get('repeating_section', 'Table')})"
+                                st.write(f"✅ {field['name']}{section_label}")
+                        else:
+                            st.write("No repeating section fields selected")
+                    
+                    # Generate templates button
+                    if st.button("🔄 Generate Dual Templates", type="primary"):
+                        # Get filters from session state
+                        main_filters = st.session_state.get('main_filters', [])
+                        repeat_filters = st.session_state.get('repeat_filters', [])
+                        
+                        main_template, repeat_template = generate_dual_templates(
+                            main_fields, repeating_fields,
+                            selected_main_ids, selected_repeat_ids,
+                            repeating_sections, main_filters, repeat_filters
+                        )
+                        st.session_state.main_template = main_template
+                        st.session_state.repeat_template = repeat_template
+                else:
+                    st.warning("⚠️ Please select fields in Tab 2 first before generating templates.")
                 
                 # Show and download templates
                 if 'main_template' in st.session_state and 'repeat_template' in st.session_state:
