@@ -413,7 +413,7 @@ def parse_form_fields_separated(form_def: Dict) -> tuple:
                             if answer_id and answer_name:
                                 clean_id = str(answer_id).replace(' ', '')[:19]
                                 
-                                fields.append({
+                                main_fields.append({
                                     'id': answer_id,
                                     'clean_id': clean_id,
                                     'name': answer_name,
@@ -439,11 +439,60 @@ def parse_form_fields(form_def: Dict) -> List[Dict]:
 
 def generate_dual_templates(main_fields: List[Dict], repeating_fields: List[Dict], 
                            selected_main_ids: Set[str], selected_repeat_ids: Set[str],
-                           repeating_sections: Dict[str, str]) -> tuple:
+                           repeating_sections: Dict[str, str], main_filters: List[Dict] = None, 
+                           repeat_filters: List[Dict] = None) -> tuple:
     """
     Generate two FreeMarker templates: one for main form, one for repeating sections
     Returns: (main_template, repeating_template)
     """
+    
+    def generate_filter_condition(filters, all_fields, is_repeat=False):
+        """Generate FreeMarker condition from filters"""
+        if not filters:
+            return ""
+        
+        conditions = []
+        for i, filter_obj in enumerate(filters):
+            if not filter_obj.get('field'):
+                continue
+                
+            field = next((f for f in all_fields if f.get('unique_id', f['id']) == filter_obj['field']), None)
+            if not field:
+                continue
+            
+            field_path = field['path']
+            if is_repeat:
+                # For repeat sections, use row.fieldname
+                field_path = f"row.{field['clean_id']}"
+            else:
+                # For main form, use full path
+                field_path = f"{field['path']}[0]"
+            
+            operator = filter_obj.get('operator', 'equals')
+            value = filter_obj.get('value', '')
+            
+            if operator == 'equals':
+                condition = f'{field_path} == "{value}"'
+            elif operator == 'not_equals':
+                condition = f'{field_path} != "{value}"'
+            elif operator == 'contains':
+                condition = f'{field_path}?contains("{value}")'
+            elif operator == 'not_contains':
+                condition = f'!{field_path}?contains("{value}")'
+            elif operator == 'exists':
+                condition = f'{field_path}?has_content'
+            elif operator == 'not_exists':
+                condition = f'!{field_path}?has_content'
+            else:
+                condition = f'{field_path} == "{value}"'
+            
+            # Add logic operator for subsequent conditions
+            if i > 0 and filter_obj.get('logic'):
+                condition = f" {filter_obj['logic']} {condition}"
+            
+            conditions.append(condition)
+        
+        return ''.join(conditions) if conditions else ""
     
     # Generate main form template with submission ID
     main_template = "\ufeff"  # UTF-8 BOM
@@ -454,11 +503,20 @@ def generate_dual_templates(main_fields: List[Dict], repeating_fields: List[Dict
         main_template += f',"{field["name"]}"'
     main_template += '\n'
     
-    # Data row for main form
+    # Generate filter condition for main form (wraps entire row)
+    main_condition = generate_filter_condition(main_filters, main_fields, is_repeat=False)
+    
+    # Data row for main form with optional filter wrapper
+    if main_condition:
+        main_template += f'<#if {main_condition}>\n'
+    
     main_template += '"${dataRecord.submissionId}","${dataRecord.form.name}","${dataRecord.serverReceiveDate}"'
     for field in selected_main:
         main_template += f',="${{({field["path"]}[0])!""}}"'
     main_template += '\n'
+    
+    if main_condition:
+        main_template += '</#if>\n'
     
     # Generate repeating sections template
     repeat_template = "\ufeff"  # UTF-8 BOM
@@ -473,6 +531,13 @@ def generate_dual_templates(main_fields: List[Dict], repeating_fields: List[Dict
     for section_name, section_info in repeating_sections.items():
         # FreeMarker loop for repeating section
         repeat_template += f'<#list answers.{section_name.replace(" ", "")} as row>\n'
+        
+        # Generate filter condition for repeat section (per row)
+        repeat_condition = generate_filter_condition(repeat_filters, repeating_fields, is_repeat=True)
+        
+        if repeat_condition:
+            repeat_template += f'<#if {repeat_condition}>\n'
+        
         repeat_template += f'"${{dataRecord.submissionId}}","{section_name}",${{row?index + 1}}'
         
         for field in selected_repeat:
@@ -480,6 +545,10 @@ def generate_dual_templates(main_fields: List[Dict], repeating_fields: List[Dict
                 repeat_template += f',="${{(row.{field["clean_id"]})!""}}"'
         
         repeat_template += '\n'
+        
+        if repeat_condition:
+            repeat_template += '</#if>\n'
+            
         repeat_template += '</#list>\n'
     
     return main_template, repeat_template
@@ -735,103 +804,305 @@ def main():
         st.header("Add Filters & Conditions")
         
         if st.session_state.form_definition:
-            fields = parse_form_fields(st.session_state.form_definition)
+            # Parse fields with separation to understand form structure
+            main_fields, repeating_fields, _ = parse_form_fields_separated(st.session_state.form_definition)
+            has_repeating = len(repeating_fields) > 0
             
-            if fields:
-                # Add new filter button
-                if st.button("➕ Add Filter"):
-                    new_filter = {
-                        'id': len(st.session_state.filters),
-                        'field': '',
-                        'operator': 'equals',
-                        'value': '',
-                        'logic': 'and'
-                    }
-                    st.session_state.filters.append(new_filter)
-                    st.rerun()
+            if has_repeating:
+                st.info("""
+                📋 **Dual Filter Mode**: Your form has repeating sections.
+                • **Main Form Filters**: Wrap the entire submission with IF conditions
+                • **Repeat Filters**: Apply per-row within repeating sections
+                """)
                 
-                # Display existing filters
-                if st.session_state.filters:
-                    st.write("**Current Filters:**")
+                # Create tabs for different filter types
+                filter_tab1, filter_tab2 = st.tabs(["Main Form Filters", "Repeating Section Filters"])
+                
+                # Main Form Filters
+                with filter_tab1:
+                    st.subheader("Main Form Data Filters")
+                    st.caption("These filters determine whether the entire submission appears in the main CSV")
                     
-                    for i, filter_obj in enumerate(st.session_state.filters):
-                        with st.container():
-                            cols = st.columns([1, 2, 2, 2, 1])
-                            
-                            # Logic operator (for filters after the first)
-                            with cols[0]:
-                                if i > 0:
-                                    logic = st.selectbox(
-                                        "Logic",
-                                        options=['and', 'or'],
-                                        value=filter_obj.get('logic', 'and'),
-                                        key=f"logic_{i}"
-                                    )
-                                    st.session_state.filters[i]['logic'] = logic
-                                else:
-                                    st.write("**Filter**")
-                            
-                            # Field selection
-                            with cols[1]:
-                                field_options = [''] + [f"{field['name']} ({field['id']})" for field in fields]
-                                field_values = [''] + [field['id'] for field in fields]
+                    if 'main_filters' not in st.session_state:
+                        st.session_state.main_filters = []
+                    
+                    if st.button("➕ Add Main Filter"):
+                        new_filter = {
+                            'id': len(st.session_state.main_filters),
+                            'field': '',
+                            'operator': 'equals',
+                            'value': '',
+                            'logic': 'and'
+                        }
+                        st.session_state.main_filters.append(new_filter)
+                        st.rerun()
+                    
+                    if st.session_state.main_filters:
+                        for i, filter_obj in enumerate(st.session_state.main_filters):
+                            with st.container():
+                                cols = st.columns([1, 2, 2, 2, 1])
                                 
-                                current_field = filter_obj.get('field', '')
-                                try:
-                                    field_index = field_values.index(current_field) if current_field in field_values else 0
-                                except ValueError:
-                                    field_index = 0
+                                with cols[0]:
+                                    if i > 0:
+                                        logic = st.selectbox(
+                                            "Logic",
+                                            options=['and', 'or'],
+                                            value=filter_obj.get('logic', 'and'),
+                                            key=f"main_logic_{i}"
+                                        )
+                                        st.session_state.main_filters[i]['logic'] = logic
+                                    else:
+                                        st.write("**Filter**")
                                 
-                                selected_field_index = st.selectbox(
-                                    "Field",
-                                    range(len(field_options)),
-                                    format_func=lambda x: field_options[x],
-                                    index=field_index,
-                                    key=f"field_{i}"
-                                )
-                                st.session_state.filters[i]['field'] = field_values[selected_field_index]
-                            
-                            # Operator selection
-                            with cols[2]:
-                                operator = st.selectbox(
-                                    "Operator",
-                                    options=['equals', 'not_equals', 'contains', 'not_contains', 'exists', 'not_exists'],
-                                    format_func=lambda x: {
-                                        'equals': 'Equals',
-                                        'not_equals': 'Not Equals',
-                                        'contains': 'Contains',
-                                        'not_contains': 'Does Not Contain',
-                                        'exists': 'Has Value',
-                                        'not_exists': 'Is Empty'
-                                    }[x],
-                                    index=['equals', 'not_equals', 'contains', 'not_contains', 'exists', 'not_exists'].index(filter_obj.get('operator', 'equals')),
-                                    key=f"operator_{i}"
-                                )
-                                st.session_state.filters[i]['operator'] = operator
-                            
-                            # Value input (only for operators that need a value)
-                            with cols[3]:
-                                if operator not in ['exists', 'not_exists']:
-                                    value = st.text_input(
-                                        "Value",
-                                        value=filter_obj.get('value', ''),
-                                        key=f"value_{i}"
+                                with cols[1]:
+                                    field_options = [''] + [f"{field['name']} ({field['id']})" for field in main_fields]
+                                    field_values = [''] + [field['id'] for field in main_fields]
+                                    
+                                    current_field = filter_obj.get('field', '')
+                                    try:
+                                        field_index = field_values.index(current_field) if current_field in field_values else 0
+                                    except ValueError:
+                                        field_index = 0
+                                    
+                                    selected_field_index = st.selectbox(
+                                        "Main Field",
+                                        range(len(field_options)),
+                                        format_func=lambda x: field_options[x],
+                                        index=field_index,
+                                        key=f"main_field_{i}"
                                     )
-                                    st.session_state.filters[i]['value'] = value
-                                else:
-                                    st.write("(no value needed)")
-                            
-                            # Remove button
-                            with cols[4]:
-                                if st.button("🗑️", key=f"remove_{i}"):
-                                    st.session_state.filters.pop(i)
-                                    st.rerun()
-                            
-                            st.divider()
-                else:
-                    st.info("No filters added yet. Add filters to conditionally include records in your CSV export.")
+                                    st.session_state.main_filters[i]['field'] = field_values[selected_field_index]
+                                
+                                with cols[2]:
+                                    operator = st.selectbox(
+                                        "Operator",
+                                        options=['equals', 'not_equals', 'contains', 'not_contains', 'exists', 'not_exists'],
+                                        format_func=lambda x: {
+                                            'equals': 'Equals',
+                                            'not_equals': 'Not Equals',
+                                            'contains': 'Contains',
+                                            'not_contains': 'Does Not Contain',
+                                            'exists': 'Has Value',
+                                            'not_exists': 'Is Empty'
+                                        }[x],
+                                        index=['equals', 'not_equals', 'contains', 'not_contains', 'exists', 'not_exists'].index(filter_obj.get('operator', 'equals')),
+                                        key=f"main_operator_{i}"
+                                    )
+                                    st.session_state.main_filters[i]['operator'] = operator
+                                
+                                with cols[3]:
+                                    if operator not in ['exists', 'not_exists']:
+                                        value = st.text_input(
+                                            "Value",
+                                            value=filter_obj.get('value', ''),
+                                            key=f"main_value_{i}"
+                                        )
+                                        st.session_state.main_filters[i]['value'] = value
+                                    else:
+                                        st.write("(no value needed)")
+                                
+                                with cols[4]:
+                                    if st.button("🗑️", key=f"main_remove_{i}"):
+                                        st.session_state.main_filters.pop(i)
+                                        st.rerun()
+                                
+                                st.divider()
+                    else:
+                        st.info("No main form filters added yet.")
+                
+                # Repeating Section Filters
+                with filter_tab2:
+                    st.subheader("Repeating Section Row Filters")
+                    st.caption("These filters determine which rows from repeating sections appear in the repeating CSV")
+                    
+                    if 'repeat_filters' not in st.session_state:
+                        st.session_state.repeat_filters = []
+                    
+                    if st.button("➕ Add Repeat Filter"):
+                        new_filter = {
+                            'id': len(st.session_state.repeat_filters),
+                            'field': '',
+                            'operator': 'equals',
+                            'value': '',
+                            'logic': 'and'
+                        }
+                        st.session_state.repeat_filters.append(new_filter)
+                        st.rerun()
+                    
+                    if st.session_state.repeat_filters:
+                        for i, filter_obj in enumerate(st.session_state.repeat_filters):
+                            with st.container():
+                                cols = st.columns([1, 2, 2, 2, 1])
+                                
+                                with cols[0]:
+                                    if i > 0:
+                                        logic = st.selectbox(
+                                            "Logic",
+                                            options=['and', 'or'],
+                                            value=filter_obj.get('logic', 'and'),
+                                            key=f"repeat_logic_{i}"
+                                        )
+                                        st.session_state.repeat_filters[i]['logic'] = logic
+                                    else:
+                                        st.write("**Filter**")
+                                
+                                with cols[1]:
+                                    field_options = [''] + [f"{field['name']} ({field['id']})" for field in repeating_fields]
+                                    field_values = [''] + [field['id'] for field in repeating_fields]
+                                    
+                                    current_field = filter_obj.get('field', '')
+                                    try:
+                                        field_index = field_values.index(current_field) if current_field in field_values else 0
+                                    except ValueError:
+                                        field_index = 0
+                                    
+                                    selected_field_index = st.selectbox(
+                                        "Repeat Field",
+                                        range(len(field_options)),
+                                        format_func=lambda x: field_options[x],
+                                        index=field_index,
+                                        key=f"repeat_field_{i}"
+                                    )
+                                    st.session_state.repeat_filters[i]['field'] = field_values[selected_field_index]
+                                
+                                with cols[2]:
+                                    operator = st.selectbox(
+                                        "Operator",
+                                        options=['equals', 'not_equals', 'contains', 'not_contains', 'exists', 'not_exists'],
+                                        format_func=lambda x: {
+                                            'equals': 'Equals',
+                                            'not_equals': 'Not Equals',
+                                            'contains': 'Contains',
+                                            'not_contains': 'Does Not Contain',
+                                            'exists': 'Has Value',
+                                            'not_exists': 'Is Empty'
+                                        }[x],
+                                        index=['equals', 'not_equals', 'contains', 'not_contains', 'exists', 'not_exists'].index(filter_obj.get('operator', 'equals')),
+                                        key=f"repeat_operator_{i}"
+                                    )
+                                    st.session_state.repeat_filters[i]['operator'] = operator
+                                
+                                with cols[3]:
+                                    if operator not in ['exists', 'not_exists']:
+                                        value = st.text_input(
+                                            "Value",
+                                            value=filter_obj.get('value', ''),
+                                            key=f"repeat_value_{i}"
+                                        )
+                                        st.session_state.repeat_filters[i]['value'] = value
+                                    else:
+                                        st.write("(no value needed)")
+                                
+                                with cols[4]:
+                                    if st.button("🗑️", key=f"repeat_remove_{i}"):
+                                        st.session_state.repeat_filters.pop(i)
+                                        st.rerun()
+                                
+                                st.divider()
+                    else:
+                        st.info("No repeating section filters added yet.")
+            
             else:
-                st.warning("No fields available for filtering.")
+                # Single template mode - use existing filter UI
+                fields = parse_form_fields(st.session_state.form_definition)
+                
+                if fields:
+                    st.info("📋 **Single Template Mode**: Your form has no repeating sections.")
+                    
+                    # Add new filter button
+                    if st.button("➕ Add Filter"):
+                        new_filter = {
+                            'id': len(st.session_state.filters),
+                            'field': '',
+                            'operator': 'equals',
+                            'value': '',
+                            'logic': 'and'
+                        }
+                        st.session_state.filters.append(new_filter)
+                        st.rerun()
+                    
+                    # Display existing filters
+                    if st.session_state.filters:
+                        st.write("**Current Filters:**")
+                        
+                        for i, filter_obj in enumerate(st.session_state.filters):
+                            with st.container():
+                                cols = st.columns([1, 2, 2, 2, 1])
+                                
+                                # Logic operator (for filters after the first)
+                                with cols[0]:
+                                    if i > 0:
+                                        logic = st.selectbox(
+                                            "Logic",
+                                            options=['and', 'or'],
+                                            value=filter_obj.get('logic', 'and'),
+                                            key=f"logic_{i}"
+                                        )
+                                        st.session_state.filters[i]['logic'] = logic
+                                    else:
+                                        st.write("**Filter**")
+                                
+                                # Field selection
+                                with cols[1]:
+                                    field_options = [''] + [f"{field['name']} ({field['id']})" for field in fields]
+                                    field_values = [''] + [field['id'] for field in fields]
+                                    
+                                    current_field = filter_obj.get('field', '')
+                                    try:
+                                        field_index = field_values.index(current_field) if current_field in field_values else 0
+                                    except ValueError:
+                                        field_index = 0
+                                    
+                                    selected_field_index = st.selectbox(
+                                        "Field",
+                                        range(len(field_options)),
+                                        format_func=lambda x: field_options[x],
+                                        index=field_index,
+                                        key=f"field_{i}"
+                                    )
+                                    st.session_state.filters[i]['field'] = field_values[selected_field_index]
+                                
+                                # Operator selection
+                                with cols[2]:
+                                    operator = st.selectbox(
+                                        "Operator",
+                                        options=['equals', 'not_equals', 'contains', 'not_contains', 'exists', 'not_exists'],
+                                        format_func=lambda x: {
+                                            'equals': 'Equals',
+                                            'not_equals': 'Not Equals',
+                                            'contains': 'Contains',
+                                            'not_contains': 'Does Not Contain',
+                                            'exists': 'Has Value',
+                                            'not_exists': 'Is Empty'
+                                        }[x],
+                                        index=['equals', 'not_equals', 'contains', 'not_contains', 'exists', 'not_exists'].index(filter_obj.get('operator', 'equals')),
+                                        key=f"operator_{i}"
+                                    )
+                                    st.session_state.filters[i]['operator'] = operator
+                                
+                                # Value input (only for operators that need a value)
+                                with cols[3]:
+                                    if operator not in ['exists', 'not_exists']:
+                                        value = st.text_input(
+                                            "Value",
+                                            value=filter_obj.get('value', ''),
+                                            key=f"value_{i}"
+                                        )
+                                        st.session_state.filters[i]['value'] = value
+                                    else:
+                                        st.write("(no value needed)")
+                                
+                                # Remove button
+                                with cols[4]:
+                                    if st.button("🗑️", key=f"remove_{i}"):
+                                        st.session_state.filters.pop(i)
+                                        st.rerun()
+                                
+                                st.divider()
+                    else:
+                        st.info("No filters added yet. Add filters to conditionally include records in your CSV export.")
+                else:
+                    st.warning("No fields available for filtering.")
         else:
             st.info("Please upload a form definition first.")
     
@@ -876,10 +1147,14 @@ def main():
                 
                 # Generate templates button
                 if st.button("🔄 Generate Dual Templates", type="primary"):
+                    # Get filters from session state
+                    main_filters = st.session_state.get('main_filters', [])
+                    repeat_filters = st.session_state.get('repeat_filters', [])
+                    
                     main_template, repeat_template = generate_dual_templates(
                         main_fields, repeating_fields,
                         selected_main_ids, selected_repeat_ids,
-                        repeating_sections
+                        repeating_sections, main_filters, repeat_filters
                     )
                     st.session_state.main_template = main_template
                     st.session_state.repeat_template = repeat_template
@@ -996,12 +1271,17 @@ def main():
             """, unsafe_allow_html=True)
     
     with progress_cols[2]:
-        num_filters = len([f for f in st.session_state.filters if f.get('field')])
-        if num_filters > 0:
+        # Count filters from both single and dual filter modes
+        single_filters = len([f for f in st.session_state.get('filters', []) if f.get('field')])
+        main_filters = len([f for f in st.session_state.get('main_filters', []) if f.get('field')])
+        repeat_filters = len([f for f in st.session_state.get('repeat_filters', []) if f.get('field')])
+        total_filters = single_filters + main_filters + repeat_filters
+        
+        if total_filters > 0:
             st.markdown(f"""
             <div class="progress-info" style="text-align: center;">
                 <h3 style="color: white; margin: 0;">🔍</h3>
-                <p style="color: white; margin: 0; font-weight: 500;">{num_filters} Filters</p>
+                <p style="color: white; margin: 0; font-weight: 500;">{total_filters} Filters</p>
             </div>
             """, unsafe_allow_html=True)
         else:
