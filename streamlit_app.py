@@ -161,19 +161,21 @@ def generate_freemarker_template(fields: List[Dict], selected_field_ids: Set[str
     if not selected_field_ids:
         return ""
     
-    selected_fields = [field for field in fields if field['id'] in selected_field_ids]
+    # Match fields using unique_id first, then fall back to id
+    selected_fields = [field for field in fields if field.get('unique_id', field['id']) in selected_field_ids]
     
     template = ""
     
-    # Add CSV header
-    headers = [f'"{field["name"]}"' for field in selected_fields]
+    # Add CSV header with display names for clarity
+    headers = [f'"{field.get("display_name", field["name"])}"' for field in selected_fields]
     template += ",".join(headers) + "\n"
     
     # Start conditional logic if filters exist
     if filters:
         conditions = []
         for i, filter_obj in enumerate(filters):
-            field = next((f for f in fields if f['id'] == filter_obj['field']), None)
+            # Find field using unique_id first, then fall back to id
+            field = next((f for f in fields if f.get('unique_id', f['id']) == filter_obj['field']), None)
             if not field:
                 continue
             
