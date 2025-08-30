@@ -677,28 +677,25 @@ def main():
                                 mime="text/plain"
                             )
                 
-                # Template summary
-                st.info(f"""
-                **Template Summary:**
-                • {len(st.session_state.selected_fields)} columns selected
-                • {len([f for f in st.session_state.filters if f.get('field')])} filters applied
-                • Ready to use with TrueContext FreeMarker Document
-                """)
-                
-                # Show template content
-                st.text_area(
-                    "Generated FreeMarker Template",
-                    value=st.session_state.generated_template,
-                    height=400,
-                    help="Copy this template to use in your TrueContext FreeMarker document"
-                )
-            else:
-                st.info("Click 'Generate Template' to create your FreeMarker template.")
-        
-        elif not st.session_state.form_definition:
+                        # Template summary
+                        st.info(f"""
+                        **Template Summary:**
+                        • {len(st.session_state.selected_fields)} columns selected
+                        • {len([f for f in st.session_state.filters if f.get('field')])} filters applied
+                        • Ready to use with TrueContext FreeMarker Document
+                        """)
+                        
+                        # Show template content
+                        st.text_area(
+                            "Generated FreeMarker Template",
+                            value=st.session_state.generated_template,
+                            height=400,
+                            help="Copy this template to use in your TrueContext FreeMarker document"
+                        )
+                else:
+                    st.info("Please select at least one field in the 'Select Fields' tab.")
+        else:
             st.warning("Please upload a form definition first.")
-        elif not st.session_state.selected_fields:
-            st.warning("Please select at least one field in the 'Select Fields' tab.")
     
     # Progress footer
     st.divider()
