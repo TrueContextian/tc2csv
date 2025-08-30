@@ -18,12 +18,17 @@ st.set_page_config(
     layout="wide"
 )
 
-def parse_form_fields(form_def: Dict) -> List[Dict]:
-    """Parse form definition to extract all available fields"""
-    fields = []
+def parse_form_fields_separated(form_def: Dict) -> tuple[List[Dict], List[Dict], Dict[str, str]]:
+    """
+    Parse form definition to extract fields, separating main form from repeating sections
+    Returns: (main_fields, repeating_fields, repeating_sections_info)
+    """
+    main_fields = []
+    repeating_fields = []
+    repeating_sections = {}  # Track repeating section names and their parent pages
     field_occurrence_counter = {}  # Track how many times we've seen each field ID
     
-    def extract_from_section(section: Dict, page_name: str, page_label: str, row_index: Optional[int] = None) -> None:
+    def extract_from_section(section: Dict, page_name: str, page_label: str, is_repeating: bool = False, section_name: str = None) -> None:
         """Extract fields from a section"""
         # Handle answers as array
         if section.get('answers') and isinstance(section['answers'], list):
@@ -36,35 +41,30 @@ def parse_form_fields(form_def: Dict) -> List[Dict]:
                     # TrueContext strips spaces and truncates IDs to 19 characters
                     clean_id = str(answer_id).replace(' ', '')[:19]
                     
-                    # Track field occurrences to create unique identifiers
-                    if answer_id not in field_occurrence_counter:
-                        field_occurrence_counter[answer_id] = 0
-                        unique_id = answer_id
-                    else:
-                        field_occurrence_counter[answer_id] += 1
-                        unique_id = f"{answer_id}_{field_occurrence_counter[answer_id]}"
-                    
-                    # Determine display name and path based on context
-                    if row_index is not None:
-                        display_name = f"{answer_name} (Row {row_index + 1})"
-                        path = f'answers.{clean_id}[{row_index}]'
-                    else:
-                        display_name = answer_name if field_occurrence_counter[answer_id] == 0 else f"{answer_name} (Instance {field_occurrence_counter[answer_id] + 1})"
-                        path = f'answers.{clean_id}[0]'
-                    
-                    fields.append({
+                    field_data = {
                         'id': answer_id,
-                        'unique_id': unique_id,
                         'clean_id': clean_id,
                         'name': answer_name,
-                        'display_name': display_name,
                         'type': answer_type,
                         'page': page_name or page_label,
                         'section': section.get('name') or section.get('label'),
                         'question': answer.get('question') or answer.get('text') or answer_name,
-                        'path': path,
-                        'row_index': row_index
-                    })
+                        'path': f'answers.{clean_id}',
+                        'repeating_section': section_name if is_repeating else None
+                    }
+                    
+                    # Add to appropriate list
+                    if is_repeating:
+                        field_data['display_name'] = f"{answer_name} (Repeating)"
+                        repeating_fields.append(field_data)
+                        if section_name and section_name not in repeating_sections:
+                            repeating_sections[section_name] = {
+                                'page': page_name,
+                                'section': section.get('name') or section.get('label')
+                            }
+                    else:
+                        field_data['display_name'] = answer_name
+                        main_fields.append(field_data)
 
         # Handle answers as object
         if section.get('answers') and isinstance(section['answers'], dict) and not isinstance(section['answers'], list):
@@ -76,35 +76,30 @@ def parse_form_fields(form_def: Dict) -> List[Dict]:
                     
                     clean_id = str(answer_id).replace(' ', '')[:19]
                     
-                    # Track field occurrences to create unique identifiers
-                    if answer_id not in field_occurrence_counter:
-                        field_occurrence_counter[answer_id] = 0
-                        unique_id = answer_id
-                    else:
-                        field_occurrence_counter[answer_id] += 1
-                        unique_id = f"{answer_id}_{field_occurrence_counter[answer_id]}"
-                    
-                    # Determine display name and path based on context
-                    if row_index is not None:
-                        display_name = f"{answer_name} (Row {row_index + 1})"
-                        path = f'answers.{clean_id}[{row_index}]'
-                    else:
-                        display_name = answer_name if field_occurrence_counter[answer_id] == 0 else f"{answer_name} (Instance {field_occurrence_counter[answer_id] + 1})"
-                        path = f'answers.{clean_id}[0]'
-                    
-                    fields.append({
+                    field_data = {
                         'id': answer_id,
-                        'unique_id': unique_id,
                         'clean_id': clean_id,
                         'name': answer_name,
-                        'display_name': display_name,
                         'type': answer_type,
                         'page': page_name or page_label,
                         'section': section.get('name') or section.get('label'),
                         'question': answer.get('question') or answer.get('text') or answer_name,
-                        'path': path,
-                        'row_index': row_index
-                    })
+                        'path': f'answers.{clean_id}',
+                        'repeating_section': section_name if is_repeating else None
+                    }
+                    
+                    # Add to appropriate list
+                    if is_repeating:
+                        field_data['display_name'] = f"{answer_name} (Repeating)"
+                        repeating_fields.append(field_data)
+                        if section_name and section_name not in repeating_sections:
+                            repeating_sections[section_name] = {
+                                'page': page_name,
+                                'section': section.get('name') or section.get('label')
+                            }
+                    else:
+                        field_data['display_name'] = answer_name
+                        main_fields.append(field_data)
 
     def extract_from_page(page: Dict) -> None:
         """Extract fields from a page"""
@@ -114,21 +109,37 @@ def parse_form_fields(form_def: Dict) -> List[Dict]:
         # Handle sections array
         if page.get('sections') and isinstance(page['sections'], list):
             for section in page['sections']:
-                extract_from_section(section, page_name, page_label)
-                
-                # Handle repeatable sections (type: "Repeat")
-                if section.get('type') == 'Repeat' and section.get('rows') and isinstance(section['rows'], list):
-                    for row_idx, row in enumerate(section['rows']):
+                # Check if this is a repeating section
+                if section.get('type') == 'Repeat':
+                    section_name = section.get('name') or section.get('label') or 'Repeating Section'
+                    # Extract the structure from the first row/template
+                    if section.get('rows') and isinstance(section['rows'], list) and len(section['rows']) > 0:
+                        row = section['rows'][0]
                         if row.get('pages') and isinstance(row['pages'], list):
                             for sub_page in row['pages']:
                                 if sub_page.get('sections') and isinstance(sub_page['sections'], list):
                                     for sub_section in sub_page['sections']:
-                                        extract_from_section(sub_section, page_name, page_label, row_idx)
+                                        extract_from_section(sub_section, page_name, page_label, is_repeating=True, section_name=section_name)
+                else:
+                    # Regular non-repeating section
+                    extract_from_section(section, page_name, page_label, is_repeating=False)
 
         # Handle sections as object
         if page.get('sections') and isinstance(page['sections'], dict) and not isinstance(page['sections'], list):
             for section_key, section in page['sections'].items():
-                extract_from_section(section, page_name, page_label)
+                # Check if this is a repeating section
+                if section.get('type') == 'Repeat':
+                    section_name = section.get('name') or section.get('label') or 'Repeating Section'
+                    # Extract structure from template
+                    if section.get('rows') and isinstance(section['rows'], list) and len(section['rows']) > 0:
+                        row = section['rows'][0]
+                        if row.get('pages') and isinstance(row['pages'], list):
+                            for sub_page in row['pages']:
+                                if sub_page.get('sections') and isinstance(sub_page['sections'], list):
+                                    for sub_section in sub_page['sections']:
+                                        extract_from_section(sub_section, page_name, page_label, is_repeating=True, section_name=section_name)
+                else:
+                    extract_from_section(section, page_name, page_label, is_repeating=False)
 
     # Try different possible root structures
     
@@ -193,7 +204,60 @@ def parse_form_fields(form_def: Dict) -> List[Dict]:
         
         find_form_elements(form_def)
 
-    return fields
+    return main_fields, repeating_fields, repeating_sections
+
+# Keep the old parser for backward compatibility
+def parse_form_fields(form_def: Dict) -> List[Dict]:
+    """Legacy parser that returns all fields combined"""
+    main_fields, repeating_fields, _ = parse_form_fields_separated(form_def)
+    return main_fields + repeating_fields
+
+def generate_dual_templates(main_fields: List[Dict], repeating_fields: List[Dict], 
+                           selected_main_ids: Set[str], selected_repeat_ids: Set[str],
+                           repeating_sections: Dict[str, str]) -> tuple[str, str]:
+    """
+    Generate two FreeMarker templates: one for main form, one for repeating sections
+    Returns: (main_template, repeating_template)
+    """
+    
+    # Generate main form template with submission ID
+    main_template = "\ufeff"  # UTF-8 BOM
+    main_template += '"SubmissionID","FormName","SubmissionDate"'
+    
+    selected_main = [f for f in main_fields if f['id'] in selected_main_ids]
+    for field in selected_main:
+        main_template += f',"{field["name"]}"'
+    main_template += '\n'
+    
+    # Data row for main form
+    main_template += '"${dataRecord.submissionId}","${dataRecord.form.name}","${dataRecord.serverReceiveDate}"'
+    for field in selected_main:
+        main_template += f',="${{({field["path"]}[0])!""}}"'
+    main_template += '\n'
+    
+    # Generate repeating sections template
+    repeat_template = "\ufeff"  # UTF-8 BOM
+    repeat_template += '"SubmissionID","SectionName","RowNumber"'
+    
+    selected_repeat = [f for f in repeating_fields if f['id'] in selected_repeat_ids]
+    for field in selected_repeat:
+        repeat_template += f',"{field["name"]}"'
+    repeat_template += '\n'
+    
+    # Generate rows for each repeating section
+    for section_name, section_info in repeating_sections.items():
+        # FreeMarker loop for repeating section
+        repeat_template += f'<#list answers.{section_name.replace(" ", "")} as row>\n'
+        repeat_template += f'"${{dataRecord.submissionId}}","{section_name}",${{row?index + 1}}'
+        
+        for field in selected_repeat:
+            if field.get('repeating_section') == section_name:
+                repeat_template += f',="${{(row.{field["clean_id"]})!""}}"'
+        
+        repeat_template += '\n'
+        repeat_template += '</#list>\n'
+    
+    return main_template, repeat_template
 
 def generate_freemarker_template(fields: List[Dict], selected_field_ids: Set[str], filters: List[Dict]) -> str:
     """Generate FreeMarker template based on selected fields and filters"""
@@ -513,32 +577,105 @@ def main():
     
     # Tab 4: Generate Template
     with tab4:
-        st.header("Generated FreeMarker Template")
+        st.header("Generated FreeMarker Templates")
         
-        if st.session_state.form_definition and st.session_state.selected_fields:
-            fields = parse_form_fields(st.session_state.form_definition)
+        if st.session_state.form_definition:
+            # Parse fields with separation
+            main_fields, repeating_fields, repeating_sections = parse_form_fields_separated(st.session_state.form_definition)
             
-            # Generate template button
-            col1, col2 = st.columns([1, 1])
-            with col1:
-                if st.button("🔄 Generate Template", type="primary"):
-                    template = generate_freemarker_template(
-                        fields, 
-                        st.session_state.selected_fields, 
-                        st.session_state.filters
-                    )
-                    st.session_state.generated_template = template
+            # Check if form has repeating sections
+            has_repeating = len(repeating_fields) > 0
             
-            # Show template if generated
-            if st.session_state.generated_template:
+            if has_repeating:
+                st.info("""
+                📊 **Dual Template Mode**: Your form contains repeating sections/tables.
+                Two CSV templates will be generated:
+                1. **Main Form CSV** - One row per submission
+                2. **Repeating Data CSV** - Multiple rows per submission (one per table row)
+                
+                Both CSVs will include a SubmissionID field for joining the data.
+                """)
+                
+                # Separate field selection for main and repeating
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.subheader("Main Form Fields")
+                    selected_main_ids = set()
+                    for field in main_fields:
+                        if st.checkbox(f"{field['name']}", key=f"main_{field['id']}_template"):
+                            selected_main_ids.add(field['id'])
+                
                 with col2:
-                    # Download button
-                    st.download_button(
-                        label="📥 Download .ftl",
-                        data=st.session_state.generated_template,
-                        file_name="truecontext-csv-template.ftl",
-                        mime="text/plain"
+                    st.subheader("Repeating Section Fields")
+                    selected_repeat_ids = set()
+                    for field in repeating_fields:
+                        section_label = f" ({field.get('repeating_section', 'Table')})"
+                        if st.checkbox(f"{field['name']}{section_label}", key=f"repeat_{field['id']}_template"):
+                            selected_repeat_ids.add(field['id'])
+                
+                # Generate templates button
+                if st.button("🔄 Generate Dual Templates", type="primary"):
+                    main_template, repeat_template = generate_dual_templates(
+                        main_fields, repeating_fields,
+                        selected_main_ids, selected_repeat_ids,
+                        repeating_sections
                     )
+                    st.session_state.main_template = main_template
+                    st.session_state.repeat_template = repeat_template
+                
+                # Show and download templates
+                if 'main_template' in st.session_state and 'repeat_template' in st.session_state:
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.subheader("📄 Main Form Template")
+                        st.download_button(
+                            label="📥 Download Main.ftl",
+                            data=st.session_state.main_template,
+                            file_name="main-form.ftl",
+                            mime="text/plain"
+                        )
+                        with st.expander("Preview Main Template"):
+                            st.code(st.session_state.main_template, language="freemarker")
+                    
+                    with col2:
+                        st.subheader("📄 Repeating Data Template")
+                        st.download_button(
+                            label="📥 Download Repeating.ftl",
+                            data=st.session_state.repeat_template,
+                            file_name="repeating-data.ftl",
+                            mime="text/plain"
+                        )
+                        with st.expander("Preview Repeating Template"):
+                            st.code(st.session_state.repeat_template, language="freemarker")
+            
+            else:
+                # Single template mode for forms without repeating sections
+                if st.session_state.selected_fields:
+                    fields = parse_form_fields(st.session_state.form_definition)
+                    
+                    # Generate template button
+                    col1, col2 = st.columns([1, 1])
+                    with col1:
+                        if st.button("🔄 Generate Template", type="primary"):
+                            template = generate_freemarker_template(
+                                fields, 
+                                st.session_state.selected_fields, 
+                                st.session_state.filters
+                            )
+                            st.session_state.generated_template = template
+                    
+                    # Show template if generated
+                    if st.session_state.generated_template:
+                        with col2:
+                            # Download button
+                            st.download_button(
+                                label="📥 Download .ftl",
+                                data=st.session_state.generated_template,
+                                file_name="truecontext-csv-template.ftl",
+                                mime="text/plain"
+                            )
                 
                 # Template summary
                 st.info(f"""
