@@ -15,9 +15,142 @@ import hashlib
 # Page configuration
 st.set_page_config(
     page_title="TrueContext CSV Generator", 
-    page_icon="📊",
-    layout="wide"
+    page_icon="🔷",
+    layout="wide",
+    initial_sidebar_state="collapsed"
 )
+
+# Custom CSS for TrueContext branding
+st.markdown("""
+<style>
+    /* TrueContext Brand Colors */
+    :root {
+        --tc-primary: #00A4E4;
+        --tc-secondary: #0077BE;
+        --tc-dark: #2C3E50;
+        --tc-light: #F8F9FA;
+        --tc-success: #28A745;
+        --tc-warning: #FFC107;
+        --tc-danger: #DC3545;
+    }
+    
+    /* Main header styling */
+    .main-header {
+        background: linear-gradient(135deg, #00A4E4 0%, #0077BE 100%);
+        color: white;
+        padding: 2rem;
+        border-radius: 10px;
+        text-align: center;
+        margin-bottom: 2rem;
+        box-shadow: 0 4px 6px rgba(0, 164, 228, 0.1);
+    }
+    
+    .main-header h1 {
+        margin: 0;
+        font-size: 2.5rem;
+        font-weight: 600;
+    }
+    
+    .main-header p {
+        margin: 0.5rem 0 0 0;
+        opacity: 0.95;
+        font-size: 1.1rem;
+    }
+    
+    /* Button styling */
+    .stButton > button {
+        background: linear-gradient(135deg, #00A4E4 0%, #0077BE 100%);
+        color: white;
+        border: none;
+        padding: 0.5rem 1rem;
+        font-weight: 500;
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 164, 228, 0.3);
+    }
+    
+    /* Tab styling */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        background-color: #F8F9FA;
+        color: #2C3E50;
+        border-radius: 8px 8px 0 0;
+        padding: 8px 16px;
+        font-weight: 500;
+    }
+    
+    .stTabs [aria-selected="true"] {
+        background: linear-gradient(135deg, #00A4E4 0%, #0077BE 100%);
+        color: white;
+    }
+    
+    /* Info boxes */
+    .info-card {
+        background: linear-gradient(135deg, #F8F9FA 0%, #E9ECEF 100%);
+        padding: 1.5rem;
+        border-radius: 10px;
+        border-left: 4px solid #00A4E4;
+        margin-bottom: 1rem;
+    }
+    
+    /* Success messages */
+    .stSuccess {
+        background-color: #D4EDDA;
+        border-color: #28A745;
+        color: #155724;
+    }
+    
+    /* Metrics styling */
+    [data-testid="metric-container"] {
+        background-color: #F8F9FA;
+        border: 1px solid #E9ECEF;
+        padding: 1rem;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    
+    [data-testid="metric-container"] [data-testid="metric-value"] {
+        color: #00A4E4;
+        font-weight: 600;
+    }
+    
+    /* File uploader */
+    .stFileUploader {
+        border: 2px dashed #00A4E4;
+        border-radius: 10px;
+        padding: 2rem;
+        background-color: #F0F9FF;
+    }
+    
+    /* Checkbox styling */
+    .stCheckbox label {
+        font-weight: 500;
+        color: #2C3E50;
+    }
+    
+    /* Expander styling */
+    .streamlit-expanderHeader {
+        background-color: #F8F9FA;
+        border-radius: 8px;
+        font-weight: 500;
+    }
+    
+    /* Footer */
+    .footer {
+        text-align: center;
+        color: #6C757D;
+        padding: 2rem 0;
+        margin-top: 3rem;
+        border-top: 1px solid #E9ECEF;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 def parse_form_fields_separated(form_def: Dict) -> tuple[List[Dict], List[Dict], Dict[str, str]]:
     """
@@ -323,9 +456,13 @@ def generate_freemarker_template(fields: List[Dict], selected_field_ids: Set[str
     return template
 
 def main():
-    # Header
-    st.title("📊 TrueContext CSV Generator")
-    st.markdown("Generate FreeMarker templates for custom CSV exports from TrueContext Form Definitions")
+    # Branded Header
+    st.markdown("""
+    <div class="main-header">
+        <h1>🔷 TrueContext CSV Template Generator</h1>
+        <p>Create FreeMarker templates for custom CSV exports from your form definitions</p>
+    </div>
+    """, unsafe_allow_html=True)
     
     # Initialize session state
     if 'form_definition' not in st.session_state:
@@ -337,17 +474,33 @@ def main():
     if 'generated_template' not in st.session_state:
         st.session_state.generated_template = ""
     
-    # Create tabs
-    tab1, tab2, tab3, tab4 = st.tabs(["📤 Upload Form", "✅ Select Fields", "🔍 Add Filters", "📄 Template"])
+    # Create tabs with TrueContext styling
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "1️⃣ Upload Form Definition", 
+        "2️⃣ Select Fields", 
+        "3️⃣ Configure Filters", 
+        "4️⃣ Generate Template"
+    ])
     
     # Tab 1: Upload Form Definition
     with tab1:
-        st.header("Upload Form Definition")
+        st.markdown("### 📁 Step 1: Upload Your Form Definition")
+        
+        st.markdown("""
+        <div class="info-card">
+            <strong>ℹ️ How to get your form definition:</strong><br>
+            1. Log in to your TrueContext account<br>
+            2. Navigate to Forms & Documents<br>
+            3. Select your form and choose Export → Form Definition (JSON)<br>
+            4. Upload the downloaded JSON file below
+        </div>
+        """, unsafe_allow_html=True)
         
         uploaded_file = st.file_uploader(
-            "Select a JSON file containing your TrueContext Form Definition",
+            "Choose your TrueContext form definition file",
             type=['json'],
-            help="Upload the JSON form definition from TrueContext"
+            help="Upload the JSON form definition exported from TrueContext",
+            label_visibility="visible"
         )
         
         if uploaded_file is not None:
@@ -713,27 +866,87 @@ def main():
         else:
             st.warning("Please upload a form definition first.")
     
-    # Progress footer
-    st.divider()
-    col1, col2, col3 = st.columns(3)
+    # Progress indicator with TrueContext styling
+    st.markdown("---")
+    st.markdown("### 📊 Progress Tracker")
     
-    with col1:
+    progress_cols = st.columns(4)
+    
+    with progress_cols[0]:
         if st.session_state.form_definition:
-            st.success("✅ Form Uploaded")
+            st.markdown("""
+            <div style="text-align: center; padding: 1rem; background: #D4EDDA; border-radius: 8px;">
+                <h3 style="color: #155724; margin: 0;">✅</h3>
+                <p style="color: #155724; margin: 0; font-weight: 500;">Form Uploaded</p>
+            </div>
+            """, unsafe_allow_html=True)
         else:
-            st.error("❌ Form Not Uploaded")
+            st.markdown("""
+            <div style="text-align: center; padding: 1rem; background: #F8F9FA; border-radius: 8px;">
+                <h3 style="color: #6C757D; margin: 0;">⏳</h3>
+                <p style="color: #6C757D; margin: 0;">Awaiting Upload</p>
+            </div>
+            """, unsafe_allow_html=True)
     
-    with col2:
+    with progress_cols[1]:
         if st.session_state.selected_fields:
-            st.success(f"✅ {len(st.session_state.selected_fields)} Fields Selected")
+            st.markdown(f"""
+            <div style="text-align: center; padding: 1rem; background: #D4EDDA; border-radius: 8px;">
+                <h3 style="color: #155724; margin: 0;">✅</h3>
+                <p style="color: #155724; margin: 0; font-weight: 500;">{len(st.session_state.selected_fields)} Fields</p>
+            </div>
+            """, unsafe_allow_html=True)
         else:
-            st.error("❌ No Fields Selected")
+            st.markdown("""
+            <div style="text-align: center; padding: 1rem; background: #F8F9FA; border-radius: 8px;">
+                <h3 style="color: #6C757D; margin: 0;">⏳</h3>
+                <p style="color: #6C757D; margin: 0;">Select Fields</p>
+            </div>
+            """, unsafe_allow_html=True)
     
-    with col3:
-        if st.session_state.generated_template:
-            st.success("✅ Template Ready")
+    with progress_cols[2]:
+        num_filters = len([f for f in st.session_state.filters if f.get('field')])
+        if num_filters > 0:
+            st.markdown(f"""
+            <div style="text-align: center; padding: 1rem; background: #CCE5FF; border-radius: 8px;">
+                <h3 style="color: #004085; margin: 0;">🔍</h3>
+                <p style="color: #004085; margin: 0; font-weight: 500;">{num_filters} Filters</p>
+            </div>
+            """, unsafe_allow_html=True)
         else:
-            st.error("❌ Template Not Generated")
+            st.markdown("""
+            <div style="text-align: center; padding: 1rem; background: #F8F9FA; border-radius: 8px;">
+                <h3 style="color: #6C757D; margin: 0;">⭕</h3>
+                <p style="color: #6C757D; margin: 0;">No Filters</p>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    with progress_cols[3]:
+        if 'generated_template' in st.session_state and st.session_state.generated_template:
+            st.markdown("""
+            <div style="text-align: center; padding: 1rem; background: #D4EDDA; border-radius: 8px;">
+                <h3 style="color: #155724; margin: 0;">✅</h3>
+                <p style="color: #155724; margin: 0; font-weight: 500;">Template Ready</p>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <div style="text-align: center; padding: 1rem; background: #F8F9FA; border-radius: 8px;">
+                <h3 style="color: #6C757D; margin: 0;">⏳</h3>
+                <p style="color: #6C757D; margin: 0;">Generate Template</p>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    # Footer with TrueContext branding
+    st.markdown("""
+    <div class="footer">
+        <p>
+            <strong>TrueContext CSV Template Generator</strong><br>
+            Part of the TrueContext Platform | Formerly ProntoForms<br>
+            <small>© 2024 TrueContext. All rights reserved.</small>
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()

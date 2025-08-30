@@ -1,8 +1,9 @@
 [theme]
-primaryColor = "#1e88e5"
-backgroundColor = "#ffffff"
-secondaryBackgroundColor = "#f0f2f6"
-textColor = "#262730"
+# TrueContext brand colors
+primaryColor = "#00A4E4"  # TrueContext Blue
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F8F9FA"
+textColor = "#2C3E50"
 font = "sans serif"
 
 [server]
