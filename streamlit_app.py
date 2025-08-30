@@ -243,7 +243,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-def parse_form_fields_separated(form_def: Dict) -> tuple[List[Dict], List[Dict], Dict[str, str]]:
+def parse_form_fields_separated(form_def: Dict) -> tuple:
     """
     Parse form definition to extract fields, separating main form from repeating sections
     Returns: (main_fields, repeating_fields, repeating_sections_info)
@@ -439,7 +439,7 @@ def parse_form_fields(form_def: Dict) -> List[Dict]:
 
 def generate_dual_templates(main_fields: List[Dict], repeating_fields: List[Dict], 
                            selected_main_ids: Set[str], selected_repeat_ids: Set[str],
-                           repeating_sections: Dict[str, str]) -> tuple[str, str]:
+                           repeating_sections: Dict[str, str]) -> tuple:
     """
     Generate two FreeMarker templates: one for main form, one for repeating sections
     Returns: (main_template, repeating_template)
