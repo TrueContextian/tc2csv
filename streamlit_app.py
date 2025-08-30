@@ -10,6 +10,7 @@ import pandas as pd
 from typing import List, Dict, Set, Optional
 import base64
 from io import StringIO
+import hashlib
 
 # Page configuration
 st.set_page_config(
@@ -404,7 +405,20 @@ def main():
         st.header("Select Fields for CSV")
         
         if st.session_state.form_definition:
-            fields = parse_form_fields(st.session_state.form_definition)
+            # Use the separated parser to get fields with unique IDs
+            main_fields, repeating_fields, _ = parse_form_fields_separated(st.session_state.form_definition)
+            fields = main_fields + repeating_fields
+            
+            # Ensure all fields have unique_id
+            seen_ids = {}
+            for field in fields:
+                base_id = field['id']
+                if base_id not in seen_ids:
+                    seen_ids[base_id] = 0
+                    field['unique_id'] = base_id
+                else:
+                    seen_ids[base_id] += 1
+                    field['unique_id'] = f"{base_id}_{seen_ids[base_id]}"
             
             if fields:
                 st.info(f"Select the fields you want to include in your CSV export. Currently selected: {len(st.session_state.selected_fields)} of {len(fields)} fields")
@@ -444,7 +458,9 @@ def main():
                         is_selected = field_unique_id in st.session_state.selected_fields
                         
                         # Create a checkbox for each field with truly unique key
-                        checkbox_key = f"field_{field_unique_id}_{i}"
+                        # Use hash to ensure uniqueness even with special characters
+                        field_hash = hashlib.md5(f"{field_unique_id}_{i}".encode()).hexdigest()[:8]
+                        checkbox_key = f"field_{field_hash}_{i}"
                         display_name = field.get('display_name', field['name'])
                         
                         selected = st.checkbox(
