@@ -1,9 +1,9 @@
 [theme]
-# TrueContext brand colors
-primaryColor = "#00A4E4"  # TrueContext Blue
-backgroundColor = "#FFFFFF"
-secondaryBackgroundColor = "#F8F9FA"
-textColor = "#2C3E50"
+# TrueContext Dark Theme
+primaryColor = "#00A4E4"  # TrueContext Blue (kept for accents)
+backgroundColor = "#0E1117"  # Dark background
+secondaryBackgroundColor = "#262730"  # Dark secondary
+textColor = "#FAFAFA"  # Light text for contrast
 font = "sans serif"
 
 [server]

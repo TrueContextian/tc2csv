@@ -20,35 +20,42 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Custom CSS for TrueContext branding
+# Custom CSS for TrueContext Dark Theme
 st.markdown("""
 <style>
-    /* TrueContext Brand Colors */
+    /* TrueContext Dark Theme Colors */
     :root {
         --tc-primary: #00A4E4;
+        --tc-primary-light: #33B5E5;
         --tc-secondary: #0077BE;
-        --tc-dark: #2C3E50;
-        --tc-light: #F8F9FA;
-        --tc-success: #28A745;
-        --tc-warning: #FFC107;
-        --tc-danger: #DC3545;
+        --tc-bg-dark: #0E1117;
+        --tc-bg-secondary: #1C1E26;
+        --tc-bg-card: #262730;
+        --tc-text-primary: #FAFAFA;
+        --tc-text-secondary: #B8BCC8;
+        --tc-border: #383A42;
+        --tc-success: #00D25B;
+        --tc-warning: #FFAB00;
+        --tc-danger: #FC424A;
     }
     
     /* Main header styling */
     .main-header {
         background: linear-gradient(135deg, #00A4E4 0%, #0077BE 100%);
         color: white;
-        padding: 2rem;
-        border-radius: 10px;
+        padding: 2.5rem;
+        border-radius: 15px;
         text-align: center;
         margin-bottom: 2rem;
-        box-shadow: 0 4px 6px rgba(0, 164, 228, 0.1);
+        box-shadow: 0 8px 32px rgba(0, 164, 228, 0.25);
+        border: 1px solid rgba(0, 164, 228, 0.3);
     }
     
     .main-header h1 {
         margin: 0;
         font-size: 2.5rem;
         font-weight: 600;
+        text-shadow: 0 2px 4px rgba(0,0,0,0.2);
     }
     
     .main-header p {
@@ -60,59 +67,88 @@ st.markdown("""
     /* Button styling */
     .stButton > button {
         background: linear-gradient(135deg, #00A4E4 0%, #0077BE 100%);
-        color: white;
+        color: white !important;
         border: none;
-        padding: 0.5rem 1rem;
+        padding: 0.6rem 1.2rem;
         font-weight: 500;
-        transition: transform 0.2s, box-shadow 0.2s;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(0, 164, 228, 0.2);
     }
     
     .stButton > button:hover {
         transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(0, 164, 228, 0.3);
+        box-shadow: 0 6px 20px rgba(0, 164, 228, 0.4);
+        background: linear-gradient(135deg, #33B5E5 0%, #00A4E4 100%);
     }
     
     /* Tab styling */
     .stTabs [data-baseweb="tab-list"] {
         gap: 8px;
+        background-color: transparent;
     }
     
     .stTabs [data-baseweb="tab"] {
-        background-color: #F8F9FA;
-        color: #2C3E50;
-        border-radius: 8px 8px 0 0;
-        padding: 8px 16px;
+        background-color: #262730;
+        color: #B8BCC8;
+        border-radius: 10px 10px 0 0;
+        padding: 10px 20px;
         font-weight: 500;
+        border: 1px solid #383A42;
+        transition: all 0.3s ease;
     }
     
     .stTabs [aria-selected="true"] {
         background: linear-gradient(135deg, #00A4E4 0%, #0077BE 100%);
-        color: white;
+        color: white !important;
+        border: 1px solid #00A4E4;
+        box-shadow: 0 4px 12px rgba(0, 164, 228, 0.3);
     }
     
     /* Info boxes */
     .info-card {
-        background: linear-gradient(135deg, #F8F9FA 0%, #E9ECEF 100%);
+        background: linear-gradient(135deg, #1C1E26 0%, #262730 100%);
         padding: 1.5rem;
-        border-radius: 10px;
+        border-radius: 12px;
         border-left: 4px solid #00A4E4;
         margin-bottom: 1rem;
+        color: #FAFAFA;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        border: 1px solid #383A42;
     }
     
-    /* Success messages */
-    .stSuccess {
-        background-color: #D4EDDA;
-        border-color: #28A745;
-        color: #155724;
+    .info-card strong {
+        color: #00A4E4;
+    }
+    
+    /* Success/Error boxes for progress */
+    .progress-success {
+        background: linear-gradient(135deg, #00D25B 0%, #00A745 100%);
+        border-radius: 10px;
+        padding: 1rem;
+        box-shadow: 0 4px 15px rgba(0, 210, 91, 0.3);
+    }
+    
+    .progress-pending {
+        background: #262730;
+        border: 1px solid #383A42;
+        border-radius: 10px;
+        padding: 1rem;
+    }
+    
+    .progress-info {
+        background: linear-gradient(135deg, #00A4E4 0%, #0077BE 100%);
+        border-radius: 10px;
+        padding: 1rem;
+        box-shadow: 0 4px 15px rgba(0, 164, 228, 0.3);
     }
     
     /* Metrics styling */
     [data-testid="metric-container"] {
-        background-color: #F8F9FA;
-        border: 1px solid #E9ECEF;
+        background: linear-gradient(135deg, #1C1E26 0%, #262730 100%);
+        border: 1px solid #383A42;
         padding: 1rem;
-        border-radius: 8px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        border-radius: 10px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
     }
     
     [data-testid="metric-container"] [data-testid="metric-value"] {
@@ -121,33 +157,88 @@ st.markdown("""
     }
     
     /* File uploader */
-    .stFileUploader {
-        border: 2px dashed #00A4E4;
-        border-radius: 10px;
-        padding: 2rem;
-        background-color: #F0F9FF;
+    [data-testid="stFileUploaderDropzone"] {
+        border: 2px dashed #00A4E4 !important;
+        border-radius: 12px;
+        background: linear-gradient(135deg, rgba(0, 164, 228, 0.05) 0%, rgba(0, 119, 190, 0.05) 100%);
     }
     
     /* Checkbox styling */
+    .stCheckbox {
+        color: #FAFAFA;
+    }
+    
     .stCheckbox label {
         font-weight: 500;
-        color: #2C3E50;
+        color: #FAFAFA !important;
+    }
+    
+    /* Text input */
+    .stTextInput > div > div > input {
+        background-color: #262730;
+        color: #FAFAFA;
+        border: 1px solid #383A42;
+    }
+    
+    /* Select box */
+    .stSelectbox > div > div {
+        background-color: #262730;
+        color: #FAFAFA;
     }
     
     /* Expander styling */
     .streamlit-expanderHeader {
-        background-color: #F8F9FA;
-        border-radius: 8px;
+        background: linear-gradient(135deg, #1C1E26 0%, #262730 100%);
+        border-radius: 10px;
         font-weight: 500;
+        color: #FAFAFA;
+        border: 1px solid #383A42;
+    }
+    
+    /* Text area */
+    .stTextArea > div > div > textarea {
+        background-color: #1C1E26;
+        color: #FAFAFA;
+        border: 1px solid #383A42;
+    }
+    
+    /* Download button special styling */
+    .stDownloadButton > button {
+        background: linear-gradient(135deg, #00D25B 0%, #00A745 100%);
+        color: white !important;
+        border: none;
+        box-shadow: 0 4px 15px rgba(0, 210, 91, 0.3);
+    }
+    
+    .stDownloadButton > button:hover {
+        background: linear-gradient(135deg, #00E566 0%, #00D25B 100%);
+        box-shadow: 0 6px 20px rgba(0, 210, 91, 0.4);
     }
     
     /* Footer */
     .footer {
         text-align: center;
-        color: #6C757D;
+        color: #B8BCC8;
         padding: 2rem 0;
         margin-top: 3rem;
-        border-top: 1px solid #E9ECEF;
+        border-top: 1px solid #383A42;
+    }
+    
+    .footer strong {
+        color: #00A4E4;
+    }
+    
+    /* Divider */
+    hr {
+        border-color: #383A42 !important;
+    }
+    
+    /* Info, warning, error messages */
+    .stAlert {
+        background-color: #262730;
+        color: #FAFAFA;
+        border: 1px solid #383A42;
+        border-radius: 10px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -875,32 +966,32 @@ def main():
     with progress_cols[0]:
         if st.session_state.form_definition:
             st.markdown("""
-            <div style="text-align: center; padding: 1rem; background: #D4EDDA; border-radius: 8px;">
-                <h3 style="color: #155724; margin: 0;">✅</h3>
-                <p style="color: #155724; margin: 0; font-weight: 500;">Form Uploaded</p>
+            <div class="progress-success" style="text-align: center;">
+                <h3 style="color: white; margin: 0;">✅</h3>
+                <p style="color: white; margin: 0; font-weight: 500;">Form Uploaded</p>
             </div>
             """, unsafe_allow_html=True)
         else:
             st.markdown("""
-            <div style="text-align: center; padding: 1rem; background: #F8F9FA; border-radius: 8px;">
-                <h3 style="color: #6C757D; margin: 0;">⏳</h3>
-                <p style="color: #6C757D; margin: 0;">Awaiting Upload</p>
+            <div class="progress-pending" style="text-align: center;">
+                <h3 style="color: #B8BCC8; margin: 0;">⏳</h3>
+                <p style="color: #B8BCC8; margin: 0;">Awaiting Upload</p>
             </div>
             """, unsafe_allow_html=True)
     
     with progress_cols[1]:
         if st.session_state.selected_fields:
             st.markdown(f"""
-            <div style="text-align: center; padding: 1rem; background: #D4EDDA; border-radius: 8px;">
-                <h3 style="color: #155724; margin: 0;">✅</h3>
-                <p style="color: #155724; margin: 0; font-weight: 500;">{len(st.session_state.selected_fields)} Fields</p>
+            <div class="progress-success" style="text-align: center;">
+                <h3 style="color: white; margin: 0;">✅</h3>
+                <p style="color: white; margin: 0; font-weight: 500;">{len(st.session_state.selected_fields)} Fields</p>
             </div>
             """, unsafe_allow_html=True)
         else:
             st.markdown("""
-            <div style="text-align: center; padding: 1rem; background: #F8F9FA; border-radius: 8px;">
-                <h3 style="color: #6C757D; margin: 0;">⏳</h3>
-                <p style="color: #6C757D; margin: 0;">Select Fields</p>
+            <div class="progress-pending" style="text-align: center;">
+                <h3 style="color: #B8BCC8; margin: 0;">⏳</h3>
+                <p style="color: #B8BCC8; margin: 0;">Select Fields</p>
             </div>
             """, unsafe_allow_html=True)
     
@@ -908,32 +999,32 @@ def main():
         num_filters = len([f for f in st.session_state.filters if f.get('field')])
         if num_filters > 0:
             st.markdown(f"""
-            <div style="text-align: center; padding: 1rem; background: #CCE5FF; border-radius: 8px;">
-                <h3 style="color: #004085; margin: 0;">🔍</h3>
-                <p style="color: #004085; margin: 0; font-weight: 500;">{num_filters} Filters</p>
+            <div class="progress-info" style="text-align: center;">
+                <h3 style="color: white; margin: 0;">🔍</h3>
+                <p style="color: white; margin: 0; font-weight: 500;">{num_filters} Filters</p>
             </div>
             """, unsafe_allow_html=True)
         else:
             st.markdown("""
-            <div style="text-align: center; padding: 1rem; background: #F8F9FA; border-radius: 8px;">
-                <h3 style="color: #6C757D; margin: 0;">⭕</h3>
-                <p style="color: #6C757D; margin: 0;">No Filters</p>
+            <div class="progress-pending" style="text-align: center;">
+                <h3 style="color: #B8BCC8; margin: 0;">⭕</h3>
+                <p style="color: #B8BCC8; margin: 0;">No Filters</p>
             </div>
             """, unsafe_allow_html=True)
     
     with progress_cols[3]:
         if 'generated_template' in st.session_state and st.session_state.generated_template:
             st.markdown("""
-            <div style="text-align: center; padding: 1rem; background: #D4EDDA; border-radius: 8px;">
-                <h3 style="color: #155724; margin: 0;">✅</h3>
-                <p style="color: #155724; margin: 0; font-weight: 500;">Template Ready</p>
+            <div class="progress-success" style="text-align: center;">
+                <h3 style="color: white; margin: 0;">✅</h3>
+                <p style="color: white; margin: 0; font-weight: 500;">Template Ready</p>
             </div>
             """, unsafe_allow_html=True)
         else:
             st.markdown("""
-            <div style="text-align: center; padding: 1rem; background: #F8F9FA; border-radius: 8px;">
-                <h3 style="color: #6C757D; margin: 0;">⏳</h3>
-                <p style="color: #6C757D; margin: 0;">Generate Template</p>
+            <div class="progress-pending" style="text-align: center;">
+                <h3 style="color: #B8BCC8; margin: 0;">⏳</h3>
+                <p style="color: #B8BCC8; margin: 0;">Generate Template</p>
             </div>
             """, unsafe_allow_html=True)
     
