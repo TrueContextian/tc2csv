@@ -553,6 +553,120 @@ def generate_dual_templates(main_fields: List[Dict], repeating_fields: List[Dict
     
     return main_template, repeat_template
 
+def parse_json_payload(json_payload: str) -> List[Dict]:
+    """
+    Parse a JSON payload to extract field paths and types for mapping
+    Returns list of field information that can be mapped to form fields
+    """
+    try:
+        payload = json.loads(json_payload)
+        fields = []
+        
+        def extract_fields(obj, path=""):
+            """Recursively extract field paths from JSON object"""
+            if isinstance(obj, dict):
+                for key, value in obj.items():
+                    current_path = f"{path}.{key}" if path else key
+                    
+                    if isinstance(value, dict):
+                        fields.append({
+                            'path': current_path,
+                            'type': 'object',
+                            'example': str(value)[:100] + "..." if len(str(value)) > 100 else str(value),
+                            'mappable': False  # Objects themselves aren't directly mappable
+                        })
+                        extract_fields(value, current_path, "object")
+                    elif isinstance(value, list):
+                        fields.append({
+                            'path': current_path,
+                            'type': 'array',
+                            'example': str(value)[:100] + "..." if len(str(value)) > 100 else str(value),
+                            'mappable': False  # Arrays themselves aren't directly mappable
+                        })
+                        if value:  # If array has elements, analyze first element
+                            extract_fields(value[0], f"{current_path}[0]")
+                    else:
+                        # Determine data type
+                        if isinstance(value, str):
+                            data_type = 'string'
+                        elif isinstance(value, (int, float)):
+                            data_type = 'number'
+                        elif isinstance(value, bool):
+                            data_type = 'boolean'
+                        else:
+                            data_type = 'string'
+                        
+                        fields.append({
+                            'path': current_path,
+                            'type': data_type,
+                            'example': str(value),
+                            'mappable': True  # These can be mapped to form fields
+                        })
+            elif isinstance(obj, list) and obj:
+                # For arrays at root level, analyze first item
+                extract_fields(obj[0], f"{path}[0]")
+        
+        extract_fields(payload)
+        return fields
+        
+    except json.JSONDecodeError as e:
+        st.error(f"Invalid JSON: {str(e)}")
+        return []
+    except Exception as e:
+        st.error(f"Error parsing JSON: {str(e)}")
+        return []
+
+def generate_json_payload_template(payload_fields: List[Dict], field_mappings: Dict[str, str], form_fields: List[Dict]) -> str:
+    """
+    Generate a FreeMarker template for JSON payload based on field mappings
+    """
+    if not field_mappings:
+        return ""
+    
+    # Group mappings by their parent paths for nested structure
+    nested_mappings = {}
+    for payload_path, form_field_id in field_mappings.items():
+        if not form_field_id:
+            continue
+            
+        # Find the form field details
+        form_field = next((f for f in form_fields if f['id'] == form_field_id), None)
+        if not form_field:
+            continue
+        
+        # Build FreeMarker expression
+        freemarker_expr = f"${{({form_field['path']}[0])!\"\"}}"
+        
+        # Store the mapping with context
+        nested_mappings[payload_path] = {
+            'freemarker': freemarker_expr,
+            'form_field': form_field,
+            'payload_field': next((p for p in payload_fields if p['path'] == payload_path), None)
+        }
+    
+    # Generate the template as a JSON structure with FreeMarker expressions
+    template = "{\n"
+    
+    for i, (path, mapping) in enumerate(nested_mappings.items()):
+        if i > 0:
+            template += ",\n"
+        
+        # Handle nested paths by creating proper JSON structure
+        path_parts = path.split('.')
+        indent = "  "
+        
+        if len(path_parts) == 1:
+            # Simple key-value at root level
+            template += f'{indent}"{path_parts[0]}": {mapping["freemarker"]}'
+        else:
+            # For now, flatten nested paths with dot notation in comments
+            template += f'{indent}// Nested path: {path}\n'
+            template += f'{indent}"{path_parts[-1]}": {mapping["freemarker"]}'
+    
+    template += "\n}"
+    
+    return template
+
 def generate_freemarker_template(fields: List[Dict], selected_field_ids: Set[str], filters: List[Dict]) -> str:
     """Generate FreeMarker template based on selected fields and filters"""
     if not selected_field_ids:
@@ -635,11 +749,12 @@ def main():
         st.session_state.generated_template = ""
     
     # Create tabs with TrueContext styling
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "1️⃣ Upload Form Definition", 
         "2️⃣ Select Fields", 
         "3️⃣ Configure Filters", 
-        "4️⃣ Generate Template"
+        "4️⃣ Generate CSV Template",
+        "5️⃣ JSON Payload Builder"
     ])
     
     # Tab 1: Upload Form Definition
@@ -1264,11 +1379,150 @@ def main():
         else:
             st.warning("Please upload a form definition first.")
     
+    # Tab 5: JSON Payload Builder
+    with tab5:
+        st.header("🔧 JSON Payload Builder")
+        st.markdown("Build FreeMarker templates for JSON payloads by mapping form fields to JSON structure")
+        
+        if st.session_state.form_definition:
+            # Get all available form fields
+            fields = parse_form_fields(st.session_state.form_definition)
+            
+            if fields:
+                # Initialize session state for JSON payload
+                if 'json_payload' not in st.session_state:
+                    st.session_state.json_payload = ""
+                if 'payload_fields' not in st.session_state:
+                    st.session_state.payload_fields = []
+                if 'field_mappings' not in st.session_state:
+                    st.session_state.field_mappings = {}
+                
+                st.markdown("""
+                <div class="info-card">
+                    <strong>📋 How to use:</strong><br>
+                    1. Paste a sample JSON request body below<br>
+                    2. The tool will parse the JSON structure<br>
+                    3. Map each JSON field to a form field<br>
+                    4. Generate a FreeMarker template for the JSON payload
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # JSON input area
+                st.subheader("Sample JSON Request Body")
+                json_input = st.text_area(
+                    "Paste your sample JSON payload here:",
+                    value=st.session_state.json_payload,
+                    height=200,
+                    placeholder='{\n  "name": "John Doe",\n  "email": "john@example.com",\n  "age": 30,\n  "address": {\n    "street": "123 Main St",\n    "city": "Anytown"\n  }\n}',
+                    help="Paste a sample JSON request body that you want to generate a template for"
+                )
+                
+                if json_input != st.session_state.json_payload:
+                    st.session_state.json_payload = json_input
+                    st.session_state.payload_fields = parse_json_payload(json_input)
+                    st.session_state.field_mappings = {}  # Reset mappings when JSON changes
+                    st.rerun()
+                
+                if st.session_state.payload_fields:
+                    st.subheader("Field Mapping")
+                    st.markdown("Map JSON fields to your form fields:")
+                    
+                    # Create form field options for dropdowns
+                    form_field_options = [''] + [f"{field['name']} ({field['id']})" for field in fields]
+                    form_field_values = [''] + [field['id'] for field in fields]
+                    
+                    # Display mappable fields
+                    mappable_fields = [f for f in st.session_state.payload_fields if f['mappable']]
+                    
+                    if mappable_fields:
+                        for i, payload_field in enumerate(mappable_fields):
+                            with st.container():
+                                col1, col2, col3 = st.columns([2, 2, 1])
+                                
+                                with col1:
+                                    st.write(f"**{payload_field['path']}**")
+                                    st.caption(f"Type: {payload_field['type']} | Example: {payload_field['example']}")
+                                
+                                with col2:
+                                    current_mapping = st.session_state.field_mappings.get(payload_field['path'], '')
+                                    try:
+                                        field_index = form_field_values.index(current_mapping) if current_mapping in form_field_values else 0
+                                    except ValueError:
+                                        field_index = 0
+                                    
+                                    selected_field_index = st.selectbox(
+                                        "Map to Form Field",
+                                        range(len(form_field_options)),
+                                        format_func=lambda x: form_field_options[x],
+                                        index=field_index,
+                                        key=f"mapping_{payload_field['path']}_{i}",
+                                        label_visibility="collapsed"
+                                    )
+                                    
+                                    st.session_state.field_mappings[payload_field['path']] = form_field_values[selected_field_index]
+                                
+                                with col3:
+                                    if st.session_state.field_mappings.get(payload_field['path']):
+                                        st.markdown("✅ **Mapped**")
+                                    else:
+                                        st.markdown("⚪ Not mapped")
+                                
+                                st.divider()
+                        
+                        # Generate template button
+                        mapped_count = len([m for m in st.session_state.field_mappings.values() if m])
+                        if mapped_count > 0:
+                            col1, col2 = st.columns([1, 1])
+                            with col1:
+                                if st.button("🔄 Generate JSON Template", type="primary"):
+                                    json_template = generate_json_payload_template(
+                                        st.session_state.payload_fields,
+                                        st.session_state.field_mappings,
+                                        fields
+                                    )
+                                    st.session_state.json_template = json_template
+                            
+                            with col2:
+                                st.info(f"📊 {mapped_count} of {len(mappable_fields)} fields mapped")
+                            
+                            # Show generated template
+                            if 'json_template' in st.session_state and st.session_state.json_template:
+                                st.subheader("Generated JSON FreeMarker Template")
+                                
+                                col1, col2 = st.columns([3, 1])
+                                with col2:
+                                    st.download_button(
+                                        label="📥 Download JSON Template",
+                                        data=st.session_state.json_template,
+                                        file_name="json-payload-template.ftl",
+                                        mime="text/plain"
+                                    )
+                                
+                                st.text_area(
+                                    "FreeMarker JSON Template",
+                                    value=st.session_state.json_template,
+                                    height=300,
+                                    help="Copy this template to use in your TrueContext FreeMarker document for JSON payloads"
+                                )
+                        else:
+                            st.info("Map at least one field to generate a template")
+                    else:
+                        st.info("No mappable fields found in the JSON structure")
+                
+                elif json_input:
+                    st.error("Please provide valid JSON to parse")
+                else:
+                    st.info("Enter a sample JSON payload above to get started")
+            else:
+                st.warning("No fields found in the uploaded form definition.")
+        else:
+            st.info("Please upload a form definition first in Tab 1.")
+    
     # Progress indicator with TrueContext styling
     st.markdown("---")
     st.markdown("### 📊 Progress Tracker")
     
-    progress_cols = st.columns(4)
+    progress_cols = st.columns(5)
     
     with progress_cols[0]:
         if st.session_state.form_definition:
@@ -1325,18 +1579,39 @@ def main():
             """, unsafe_allow_html=True)
     
     with progress_cols[3]:
-        if 'generated_template' in st.session_state and st.session_state.generated_template:
+        template_ready = (
+            ('generated_template' in st.session_state and st.session_state.generated_template) or
+            ('main_template' in st.session_state and st.session_state.main_template)
+        )
+        if template_ready:
             st.markdown("""
             <div class="progress-success" style="text-align: center;">
                 <h3 style="color: white; margin: 0;">✅</h3>
-                <p style="color: white; margin: 0; font-weight: 500;">Template Ready</p>
+                <p style="color: white; margin: 0; font-weight: 500;">CSV Ready</p>
             </div>
             """, unsafe_allow_html=True)
         else:
             st.markdown("""
             <div class="progress-pending" style="text-align: center;">
                 <h3 style="color: #B8BCC8; margin: 0;">⏳</h3>
-                <p style="color: #B8BCC8; margin: 0;">Generate Template</p>
+                <p style="color: #B8BCC8; margin: 0;">Generate CSV</p>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    with progress_cols[4]:
+        json_template_ready = 'json_template' in st.session_state and st.session_state.json_template
+        if json_template_ready:
+            st.markdown("""
+            <div class="progress-success" style="text-align: center;">
+                <h3 style="color: white; margin: 0;">✅</h3>
+                <p style="color: white; margin: 0; font-weight: 500;">JSON Ready</p>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <div class="progress-pending" style="text-align: center;">
+                <h3 style="color: #B8BCC8; margin: 0;">⭕</h3>
+                <p style="color: #B8BCC8; margin: 0;">Optional</p>
             </div>
             """, unsafe_allow_html=True)
     
