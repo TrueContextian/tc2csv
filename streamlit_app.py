@@ -21,8 +21,9 @@ st.set_page_config(
 def parse_form_fields(form_def: Dict) -> List[Dict]:
     """Parse form definition to extract all available fields"""
     fields = []
+    field_occurrence_counter = {}  # Track how many times we've seen each field ID
     
-    def extract_from_section(section: Dict, page_name: str, page_label: str) -> None:
+    def extract_from_section(section: Dict, page_name: str, page_label: str, row_index: Optional[int] = None) -> None:
         """Extract fields from a section"""
         # Handle answers as array
         if section.get('answers') and isinstance(section['answers'], list):
@@ -35,15 +36,34 @@ def parse_form_fields(form_def: Dict) -> List[Dict]:
                     # TrueContext strips spaces and truncates IDs to 19 characters
                     clean_id = str(answer_id).replace(' ', '')[:19]
                     
+                    # Track field occurrences to create unique identifiers
+                    if answer_id not in field_occurrence_counter:
+                        field_occurrence_counter[answer_id] = 0
+                        unique_id = answer_id
+                    else:
+                        field_occurrence_counter[answer_id] += 1
+                        unique_id = f"{answer_id}_{field_occurrence_counter[answer_id]}"
+                    
+                    # Determine display name and path based on context
+                    if row_index is not None:
+                        display_name = f"{answer_name} (Row {row_index + 1})"
+                        path = f'answers.{clean_id}[{row_index}]'
+                    else:
+                        display_name = answer_name if field_occurrence_counter[answer_id] == 0 else f"{answer_name} (Instance {field_occurrence_counter[answer_id] + 1})"
+                        path = f'answers.{clean_id}[0]'
+                    
                     fields.append({
                         'id': answer_id,
+                        'unique_id': unique_id,
                         'clean_id': clean_id,
                         'name': answer_name,
+                        'display_name': display_name,
                         'type': answer_type,
                         'page': page_name or page_label,
                         'section': section.get('name') or section.get('label'),
                         'question': answer.get('question') or answer.get('text') or answer_name,
-                        'path': f'answers.{clean_id}[0]'
+                        'path': path,
+                        'row_index': row_index
                     })
 
         # Handle answers as object
@@ -56,15 +76,34 @@ def parse_form_fields(form_def: Dict) -> List[Dict]:
                     
                     clean_id = str(answer_id).replace(' ', '')[:19]
                     
+                    # Track field occurrences to create unique identifiers
+                    if answer_id not in field_occurrence_counter:
+                        field_occurrence_counter[answer_id] = 0
+                        unique_id = answer_id
+                    else:
+                        field_occurrence_counter[answer_id] += 1
+                        unique_id = f"{answer_id}_{field_occurrence_counter[answer_id]}"
+                    
+                    # Determine display name and path based on context
+                    if row_index is not None:
+                        display_name = f"{answer_name} (Row {row_index + 1})"
+                        path = f'answers.{clean_id}[{row_index}]'
+                    else:
+                        display_name = answer_name if field_occurrence_counter[answer_id] == 0 else f"{answer_name} (Instance {field_occurrence_counter[answer_id] + 1})"
+                        path = f'answers.{clean_id}[0]'
+                    
                     fields.append({
                         'id': answer_id,
+                        'unique_id': unique_id,
                         'clean_id': clean_id,
                         'name': answer_name,
+                        'display_name': display_name,
                         'type': answer_type,
                         'page': page_name or page_label,
                         'section': section.get('name') or section.get('label'),
                         'question': answer.get('question') or answer.get('text') or answer_name,
-                        'path': f'answers.{clean_id}[0]'
+                        'path': path,
+                        'row_index': row_index
                     })
 
     def extract_from_page(page: Dict) -> None:
@@ -79,12 +118,12 @@ def parse_form_fields(form_def: Dict) -> List[Dict]:
                 
                 # Handle repeatable sections (type: "Repeat")
                 if section.get('type') == 'Repeat' and section.get('rows') and isinstance(section['rows'], list):
-                    for row_index, row in enumerate(section['rows']):
+                    for row_idx, row in enumerate(section['rows']):
                         if row.get('pages') and isinstance(row['pages'], list):
                             for sub_page in row['pages']:
                                 if sub_page.get('sections') and isinstance(sub_page['sections'], list):
                                     for sub_section in sub_page['sections']:
-                                        extract_from_section(sub_section, f"{page_name} (Row {row_index + 1})", page_label)
+                                        extract_from_section(sub_section, page_name, page_label, row_idx)
 
         # Handle sections as object
         if page.get('sections') and isinstance(page['sections'], dict) and not isinstance(page['sections'], list):
@@ -315,7 +354,7 @@ def main():
                     clear_all = st.button("Clear All")
                 
                 if select_all:
-                    st.session_state.selected_fields = {field['id'] for field in fields}
+                    st.session_state.selected_fields = {field.get('unique_id', field['id']) for field in fields}
                     st.rerun()
                 
                 if clear_all:
@@ -336,25 +375,32 @@ def main():
                 cols = st.columns(3)
                 for i, field in enumerate(filtered_fields):
                     with cols[i % 3]:
-                        is_selected = field['id'] in st.session_state.selected_fields
+                        # Use unique_id for tracking selection
+                        field_unique_id = field.get('unique_id', field['id'])
+                        is_selected = field_unique_id in st.session_state.selected_fields
                         
-                        # Create a checkbox for each field
-                        checkbox_key = f"field_{field['id']}"
+                        # Create a checkbox for each field with truly unique key
+                        checkbox_key = f"field_{field_unique_id}_{i}"
+                        display_name = field.get('display_name', field['name'])
+                        
                         selected = st.checkbox(
-                            f"**{field['name']}**",
+                            f"**{display_name}**",
                             value=is_selected,
                             key=checkbox_key,
-                            help=f"ID: {field['id']}\nPage: {field.get('page', 'N/A')}\nSection: {field.get('section', 'N/A')}\nType: {field.get('type', 'N/A')}"
+                            help=f"ID: {field['id']}\nPage: {field.get('page', 'N/A')}\nSection: {field.get('section', 'N/A')}\nType: {field.get('type', 'N/A')}\nPath: {field.get('path', 'N/A')}"
                         )
                         
-                        if selected and field['id'] not in st.session_state.selected_fields:
-                            st.session_state.selected_fields.add(field['id'])
-                        elif not selected and field['id'] in st.session_state.selected_fields:
-                            st.session_state.selected_fields.remove(field['id'])
+                        if selected and field_unique_id not in st.session_state.selected_fields:
+                            st.session_state.selected_fields.add(field_unique_id)
+                        elif not selected and field_unique_id in st.session_state.selected_fields:
+                            st.session_state.selected_fields.remove(field_unique_id)
                         
                         # Show field details
                         st.caption(f"📄 {field.get('page', 'N/A')} → {field.get('section', 'N/A')}")
-                        st.caption(f"🏷️ {field['id']} ({field.get('type', 'N/A')})")
+                        if field.get('row_index') is not None:
+                            st.caption(f"🏷️ {field['id']} [Row {field['row_index'] + 1}] ({field.get('type', 'N/A')})")
+                        else:
+                            st.caption(f"🏷️ {field['id']} ({field.get('type', 'N/A')})")
             else:
                 st.warning("No fields found in the uploaded form definition.")
         else:
