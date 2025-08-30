@@ -575,14 +575,14 @@ def main():
     
     # Tab 1: Upload Form Definition
     with tab1:
-        st.markdown("### 📁 Step 1: Upload Your Form Definition")
+        st.markdown("### 📁 Step 1: Upload Your Standard JSON Output")
         
         st.markdown("""
         <div class="info-card">
             <strong>ℹ️ How to get your form definition:</strong><br>
             1. Log in to your TrueContext account<br>
-            2. Navigate to Forms & Documents<br>
-            3. Select your form and choose Export → Form Definition (JSON)<br>
+            2. Navigate to Data & Analytics, then Submissions (by Form)<br>
+            3. Select your form and hover your mouse next to the title, Download Standard JSON (JSON)<br>
             4. Upload the downloaded JSON file below
         </div>
         """, unsafe_allow_html=True)
